@@ -1,0 +1,9 @@
+parameter,value,units
+wavelength,1064.0,nm
+power,1.0,W
+Gaussian_waist_radius,10.0,mm
+Bessel_cone_angle,0.05,mrad
+Bessel_finite_length,3.9999999966666664,km
+Bessel_core_radius,8.14529534292813,mm
+Airy_scale,50.0,mm
+top_hat_radius,10.0,mm

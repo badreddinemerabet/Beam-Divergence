@@ -1,0 +1,5 @@
+metric,value
+dataset_rows,27300
+test_log10_divergence_RMSE,0.2922463094969379
+grouped_selection_accuracy,0.6369230769230769
+distance_anchors_km,"0.1,0.2,0.5,1,2,5,10,20,30,50,75,100,125"

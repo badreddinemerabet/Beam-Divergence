@@ -1,0 +1,8 @@
+parameter,value,units
+wavelength,1064.0,nm
+power,1.0,W
+cone_angle,0.05,mrad
+core_radius,8.14529534292813,mm
+envelope_radius_z0,0.2,m
+envelope_radius_100km,0.26206168487436127,m
+envelope_rayleigh_range,118.1049869770599,km
