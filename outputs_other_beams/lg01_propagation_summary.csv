@@ -1,0 +1,7 @@
+parameter,value,units
+wavelength,1064.0,nm
+power,1.0,W
+M2,1.0,
+waist_z0,10.0,mm
+rayleigh_range,295.2624674426497,m
+waist_at_100km,3.386831952086729,m

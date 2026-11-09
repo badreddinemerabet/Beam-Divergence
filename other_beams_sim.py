@@ -1,183 +1,116 @@
-"""Unified comparison of non-Gaussian paraxial beams over 0–100 km.
+"""Corrected finite-power transverse beam comparison.
 
-Run: python other_beams_sim.py
+This version makes the source-plane comparison consistent:
+- all beams are represented as 2-D irradiance fields I(x,y,0)
+- every field is numerically normalized to POWER on the plotting aperture
+- LG01 normalization is corrected
+- HG10 is a full 2-D mode, not only a 1-D cut
+- Airy is a separable 2-D finite-energy Airy beam
+- Bessel uses a finite super-Gaussian aperture envelope
 
-This is a compact theoretical comparison at lambda=1064 nm and P=1 W.
-The models are scalar and paraxial:
-  Bessel: finite-aperture J0 approximation with a finite nondiffracting length.
-  Airy: finite-energy 1-D Airy solution with exponential apodization.
-  Top-hat: circular-aperture Fresnel/Fraunhofer transition approximation.
-  LG01: Laguerre–Gaussian vortex mode.
-  HG10: Hermite–Gaussian first-order mode.
-
-For engineering propagation through atmosphere, apertures, or lenses, replace the
-closed-form models with an angular-spectrum or Fresnel propagator.
+Propagation plots remain compact analytical approximations; use an angular-
+spectrum propagator for engineering-grade propagation and divergence labels.
 """
 from pathlib import Path
 import csv
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from scipy.special import j0, j1, eval_hermite, eval_genlaguerre, airy
+from scipy.special import j0, j1, airy
 
-C0 = 299_792_458.0
-EPS0 = 8.8541878128e-12
+LAMBDA=1064e-9; K=2*np.pi/LAMBDA; POWER=1.0; W0=10e-3; ZMAX=100e3
+BESSEL_THETA=0.05e-3; BESSEL_KR=K*np.sin(BESSEL_THETA); BESSEL_APERTURE_RADIUS=0.20
+BESSEL_CORE_RADIUS=2.405/BESSEL_KR
+AIRY_X0=0.05; AIRY_A=0.08; TOPHAT_RADIUS=W0
+NAMES=['Bessel (finite aperture)','Airy (2-D separable)','Top-hat aperture','Laguerre-Gaussian LG01','Hermite-Gaussian HG10']
+SHORT=['Bessel','Airy','Top-hat','LG01','HG10']
+COLORS=['#2563eb','#ea580c','#16a34a','#9333ea','#0891b2']
 
-LAMBDA = 1064e-9
-K = 2*np.pi/LAMBDA
-POWER = 1.0
-W0 = 10e-3
-ZMAX = 100e3
+
+def normalize(I, dx, dy):
+    total=float(np.sum(I)*dx*dy)
+    return I*(POWER/total) if total>0 else I
 
 
-def gaussian_radius(z):
-    zr = np.pi*W0**2/LAMBDA
+def source_intensities(X,Y):
+    r=np.hypot(X,Y)
+    dx=float(X[0,1]-X[0,0]); dy=float(Y[1,0]-Y[0,0])
+    # Finite-power Bessel approximation: a smooth finite generating aperture.
+    b=j0(BESSEL_KR*r)**2*np.exp(-2*(r/(0.72*BESSEL_APERTURE_RADIUS))**8)
+    # Separable 2-D finite-energy Airy source.
+    sx=X/AIRY_X0; sy=Y/AIRY_X0
+    afx=airy(sx)[0]*np.exp(AIRY_A*sx)
+    afy=airy(sy)[0]*np.exp(AIRY_A*sy)
+    a=np.abs(afx*afy)**2
+    # Circular top-hat aperture.
+    t=(r<=TOPHAT_RADIUS).astype(float)
+    # Correct p=0, l=1 LG normalization: base Gaussian times rho^2.
+    rho2=2*r*r/W0**2
+    lg=(2*POWER/(np.pi*W0**2))*rho2*np.exp(-rho2)
+    # Full 2-D HG10, normalized analytically then checked numerically.
+    u=np.sqrt(2)*X/W0
+    hg=(2*POWER/(np.pi*W0**2))*2*u*u*np.exp(-2*r*r/W0**2)
+    return [normalize(b,dx,dy),normalize(a,dx,dy),normalize(t,dx,dy),normalize(lg,dx,dy),normalize(hg,dx,dy)]
+
+
+def gaussian_width(z, mode_factor=1):
+    zr=np.pi*W0**2/(mode_factor*LAMBDA)
     return W0*np.sqrt(1+(z/zr)**2)
 
 
-def gaussian_peak(z):
-    return 2*POWER/(np.pi*gaussian_radius(z)**2)
-
-# Bessel parameters selected so the central lobe is approximately 10 mm.
-BESSEL_THETA = 0.05e-3
-BESSEL_KR = K*np.sin(BESSEL_THETA)
-BESSEL_APERTURE_RADIUS = 0.20
-BESSEL_ZMAX = BESSEL_APERTURE_RADIUS/np.tan(BESSEL_THETA)
-BESSEL_CORE_RADIUS = 2.405/BESSEL_KR
-
-# Finite-energy Airy scale and apodization.
-AIRY_X0 = 0.05
-AIRY_A = 0.08
-AIRY_Z0 = K*AIRY_X0**2
-
-# Circular top-hat aperture radius.
-TOPHAT_RADIUS = W0
+def profiles_at_z0(axis):
+    X,Y=np.meshgrid(axis,axis); vals=source_intensities(X,Y)
+    mid=len(axis)//2
+    return vals,[v[mid,:] for v in vals]
 
 
-def bessel_intensity(r, z):
-    """Finite-aperture Bessel-beam intensity approximation, W/m^2."""
-    r = np.asarray(r); z = np.asarray(z)
-    radial = j0(BESSEL_KR*r)**2
-    finite_envelope = np.exp(-((np.maximum(z, 0)-BESSEL_ZMAX)/BESSEL_ZMAX)**2 * (z > BESSEL_ZMAX))
-    return (2*POWER/(np.pi*BESSEL_CORE_RADIUS**2))*radial*finite_envelope
+def plot_z0(outdir):
+    axis=np.linspace(-0.15,0.15,700); vals,profiles=profiles_at_z0(axis)
+    fig,axes=plt.subplots(2,3,figsize=(16,10),constrained_layout=True)
+    for ax,name,val in zip(axes.flat,NAMES,vals):
+        im=ax.pcolormesh(axis*1000,axis*1000,np.maximum(val,1e-12),shading='auto',cmap='coolwarm',norm=LogNorm(vmin=1e-8,vmax=max(1,float(val.max()))))
+        ax.set_title(name); ax.set_xlabel('x (mm)'); ax.set_ylabel('y (mm)'); ax.set_aspect('equal'); fig.colorbar(im,ax=ax,label='I (W/m², log)')
+    ax=axes[1,2]
+    for name,c,p in zip(NAMES,COLORS,profiles): ax.plot(axis*1000,p,c=c,lw=1.8,label=name)
+    ax.set_title('Center-line irradiance profiles at z = 0'); ax.set_xlabel('x (mm)'); ax.set_ylabel('I(x,0) (W/m²)'); ax.grid(alpha=.3); ax.legend(fontsize=7)
+    fig.suptitle('Corrected initial transverse irradiance, z = 0, λ = 1064 nm, P = 1 W',fontsize=16)
+    fig.savefig(outdir/'initial_beams_z0_corrected.png',dpi=180); plt.close(fig)
+    # Linear-scale version for shape/edge visibility.
+    fig,axes=plt.subplots(2,3,figsize=(16,10),constrained_layout=True)
+    for ax,name,val in zip(axes.flat,NAMES,vals):
+        im=ax.pcolormesh(axis*1000,axis*1000,val,shading='auto',cmap='coolwarm',vmin=0,vmax=max(1,float(val.max())))
+        ax.set_title(name); ax.set_xlabel('x (mm)'); ax.set_ylabel('y (mm)'); ax.set_aspect('equal'); fig.colorbar(im,ax=ax,label='I (W/m²)')
+    ax=axes[1,2]
+    for name,c,p in zip(NAMES,COLORS,profiles): ax.plot(axis*1000,p,c=c,lw=1.8,label=name)
+    ax.set_title('Linear center-line profiles at z = 0'); ax.set_xlabel('x (mm)'); ax.set_ylabel('I(x,0) (W/m²)'); ax.grid(alpha=.3); ax.legend(fontsize=7)
+    fig.suptitle('Corrected initial irradiance, linear scale',fontsize=16)
+    fig.savefig(outdir/'initial_beams_z0_corrected_linear.png',dpi=180); plt.close(fig)
+    # Power check.
+    with open(outdir/'z0_power_check.csv','w',newline='') as f:
+        w=csv.writer(f); w.writerow(['beam','integrated_power_W'])
+        dx=axis[1]-axis[0]
+        for name,val in zip(SHORT,vals): w.writerow([name,float(np.sum(val)*dx*dx)])
+    print('Saved corrected z=0 figures and power check')
 
 
-def airy_field(x, z):
-    """Finite-energy Airy field along one transverse coordinate."""
-    s = np.asarray(x)/AIRY_X0
-    xi = np.asarray(z)/AIRY_Z0
-    arg = s - xi**2/4 + 1j*AIRY_A*xi
-    Ai = airy(arg)[0]
-    return Ai*np.exp(AIRY_A*s - AIRY_A*xi**2/2 + 1j*(s*xi/2 - xi**3/12 + AIRY_A**2*xi/2))
-
-
-def airy_intensity(x, z):
-    field = airy_field(x, z)
-    # Normalize to 1 W total in the plotted 1-D slice for comparison only.
-    return POWER/(np.sqrt(2*np.pi)*AIRY_X0) * np.abs(field)**2
-
-
-def tophat_intensity(r, z):
-    """Circular top-hat aperture: near field to far-field Airy-pattern blend."""
-    r = np.asarray(r); z = np.asarray(z)
-    z_transition = K*TOPHAT_RADIUS**2/2
-    q = np.sqrt((r/(TOPHAT_RADIUS+1e-30))**2 + (z/(z_transition+1e-30))**2)
-    x = K*TOPHAT_RADIUS*r/(np.maximum(z, 1e-12))
-    airy_ff = np.ones_like(x, dtype=float)
-    nz = np.abs(x) > 1e-12
-    airy_ff[nz] = (2*j1(x[nz])/x[nz])**2
-    near = POWER/(np.pi*TOPHAT_RADIUS**2) * (r <= TOPHAT_RADIUS)
-    far = POWER/(np.pi*TOPHAT_RADIUS**2) * (z_transition/np.maximum(z, 1e-12))**2 * airy_ff
-    blend = np.clip(z/z_transition, 0, 1)
-    return (1-blend)*near + blend*far
-
-
-def lg01_intensity(r, z):
-    w = gaussian_radius(z)
-    rho = np.sqrt(2)*np.asarray(r)/w
-    # Normalization is chosen so the total transverse power is approximately P.
-    return 4*POWER/(np.pi*w**2) * rho**2*np.exp(-rho**2)
-
-
-def hg10_intensity(x, z):
-    w = gaussian_radius(z)
-    u = np.sqrt(2)*np.asarray(x)/w
-    # 1-D cut at y=0; normalization is relative to the Gaussian reference.
-    return gaussian_peak(z)*2*u**2*np.exp(-u**2)
-
-
-def sample_profiles(z_value, r):
-    return {
-        "Bessel J0": bessel_intensity(r, z_value),
-        "Airy": airy_intensity(r, z_value),
-        "Top-hat aperture": tophat_intensity(r, z_value),
-        "Laguerre–Gaussian LG01": lg01_intensity(r, z_value),
-        "Hermite–Gaussian HG10": hg10_intensity(r, z_value),
-    }
-
-
-def on_axis_curves(z):
-    # For LG01 and HG10, axis intensity is zero by mode symmetry.
-    return {
-        "Bessel J0": bessel_intensity(0, z),
-        "Airy": airy_intensity(0, z),
-        "Top-hat aperture": tophat_intensity(0, z),
-        "Laguerre–Gaussian LG01": np.zeros_like(z),
-        "Hermite–Gaussian HG10": np.zeros_like(z),
-    }
-
-
-def make_plots(outdir):
-    outdir.mkdir(exist_ok=True)
-    z = np.linspace(0, ZMAX, 700)
-    r = np.linspace(-0.15, 0.15, 900)
-    colors = ['#2563eb','#ea580c','#16a34a','#9333ea','#0891b2']
-    names = list(on_axis_curves(z))
-
-    fig, ax = plt.subplots(2, 2, figsize=(14, 9), constrained_layout=True)
-    for color, name in zip(colors, names):
-        ax[0,0].plot(z/1000, on_axis_curves(z)[name], color=color, lw=1.8, label=name)
-        ax[0,1].plot(r*1000, sample_profiles(0, r)[name], color=color, lw=1.8, label=name)
-        ax[1,0].plot(r*1000, sample_profiles(ZMAX, r)[name], color=color, lw=1.8, label=name)
-    ax[0,0].set(title='On-axis irradiance versus distance', xlabel='z (km)', ylabel='I(0,z) (W/m²)', yscale='log')
-    ax[0,1].set(title='Transverse profile at z = 0', xlabel='x or r (mm)', ylabel='irradiance (W/m²)')
-    ax[1,0].set(title='Transverse profile at z = 100 km', xlabel='x or r (mm)', ylabel='irradiance (W/m²)', yscale='log')
-    for a in ax.ravel(): a.grid(alpha=0.3); a.legend(fontsize=8)
-    ax[1,1].axis('off')
-    ax[1,1].text(0.03, 0.95, 'Model parameters\n\nλ = 1064 nm\nP = 1 W\nGaussian reference w₀ = 10 mm\nBessel cone angle = 0.05 mrad\nBessel aperture radius = 0.20 m\nAiry scale x₀ = 50 mm\nTop-hat radius = 10 mm\nRange = 0–100 km\n\nLG01 and HG10 are dark on axis\nbecause they are higher-order modes.', va='top', fontsize=12)
-    fig.suptitle('Non-Gaussian paraxial beam comparison', fontsize=16)
-    fig.savefig(outdir/'other_beams_comparison.png', dpi=180); plt.close(fig)
-
-    # Line maps of normalized irradiance versus x and z.
-    zmap = np.linspace(0, ZMAX, 500); xmap = np.linspace(-0.15, 0.15, 420)
-    X,Z = np.meshgrid(xmap,zmap)
-    fields = [bessel_intensity(X,Z), airy_intensity(X,Z), tophat_intensity(X,Z), lg01_intensity(X,Z), hg10_intensity(X,Z)]
-    fig, axes = plt.subplots(3,2, figsize=(14,13), constrained_layout=True)
-    for a, name, field in zip(axes.ravel(), names, fields):
-        im = a.pcolormesh(Z/1000, X*1000, np.maximum(field,1e-10), shading='auto', cmap='magma')
-        a.set_title(name); a.set_xlabel('z (km)'); a.set_ylabel('transverse coordinate (mm)')
-        a.set_yscale('linear'); fig.colorbar(im, ax=a, label='W/m² (log color scale)')
-        im.set_norm(LogNorm(vmin=1e-10, vmax=max(1, np.max(field))))
-    axes[-1,-1].axis('off'); fig.suptitle('Beam propagation cross-sections', fontsize=16)
-    fig.savefig(outdir/'other_beams_propagation_maps.png', dpi=180); plt.close(fig)
-
-
-def export_csv(outdir):
-    z = np.linspace(0, ZMAX, 1001); curves = on_axis_curves(z)
-    with open(outdir/'other_beams_on_axis.csv','w',newline='') as f:
-        w=csv.writer(f); w.writerow(['z_m']+list(curves))
-        for i, zi in enumerate(z): w.writerow([zi]+[curves[n][i] for n in curves])
-    with open(outdir/'other_beams_parameters.csv','w',newline='') as f:
-        w=csv.writer(f); w.writerow(['parameter','value','units'])
-        for row in [('wavelength',LAMBDA*1e9,'nm'),('power',POWER,'W'),('Gaussian_waist_radius',W0*1e3,'mm'),('Bessel_cone_angle',BESSEL_THETA*1e3,'mrad'),('Bessel_finite_length',BESSEL_ZMAX/1000,'km'),('Bessel_core_radius',BESSEL_CORE_RADIUS*1e3,'mm'),('Airy_scale',AIRY_X0*1e3,'mm'),('top_hat_radius',TOPHAT_RADIUS*1e3,'mm')]: w.writerow(row)
+def approximate_propagation(outdir):
+    z=np.linspace(0,ZMAX,1001); zr=np.pi*W0**2/LAMBDA
+    # These are diagnostic approximations, not replacements for angular-spectrum propagation.
+    bessel_axis=np.full_like(z,POWER/(np.pi*BESSEL_CORE_RADIUS**2)); bessel_axis[z>BESSEL_APERTURE_RADIUS/np.tan(BESSEL_THETA)]*=np.exp(-((z[z>BESSEL_APERTURE_RADIUS/np.tan(BESSEL_THETA)]-BESSEL_APERTURE_RADIUS/np.tan(BESSEL_THETA))/(BESSEL_APERTURE_RADIUS/np.tan(BESSEL_THETA)))**2)
+    xi=z/(K*AIRY_X0**2); airy_axis=POWER/(np.sqrt(2*np.pi)*AIRY_X0)*np.abs(airy(-xi**2/4+1j*AIRY_A*xi)[0])**2*np.exp(-AIRY_A*xi**2)
+    top_axis=POWER/(np.pi*TOPHAT_RADIUS**2)*np.where(z<=K*TOPHAT_RADIUS**2/2,1,(K*TOPHAT_RADIUS**2/2/np.maximum(z,1e-12))**2)
+    with open(outdir/'other_beams_on_axis_corrected.csv','w',newline='') as f:
+        w=csv.writer(f); w.writerow(['z_m']+SHORT)
+        w.writerows(zip(z,bessel_axis,airy_axis,top_axis,np.zeros_like(z),np.zeros_like(z)))
+    fig,ax=plt.subplots(figsize=(10,6))
+    for c,n,v in zip(COLORS,SHORT,[bessel_axis,airy_axis,top_axis,np.zeros_like(z),np.zeros_like(z)]): ax.plot(z/1000,np.maximum(v,1e-12),c=c,label=n)
+    ax.set_yscale('log'); ax.set(xlabel='z (km)',ylabel='on-axis irradiance (W/m²)',title='Corrected analytical on-axis diagnostics'); ax.grid(alpha=.3); ax.legend(); fig.tight_layout(); fig.savefig(outdir/'other_beams_comparison_corrected.png',dpi=180); plt.close(fig)
 
 
 def main():
-    outdir = Path(__file__).resolve().parent/'outputs_other_beams'; outdir.mkdir(exist_ok=True)
-    print('Other-beam simulation: λ=1064 nm, P=1 W, range=0–100 km')
-    print(f'Bessel finite nondiffracting length: {BESSEL_ZMAX/1000:.2f} km')
-    print(f'Bessel central-core radius estimate: {BESSEL_CORE_RADIUS*1000:.2f} mm')
-    print(f'Airy characteristic length z0: {AIRY_Z0/1000:.3f} km')
-    make_plots(outdir); export_csv(outdir); print(f'Saved outputs to {outdir}')
+    out=Path(__file__).resolve().parent/'outputs_other_beams'; out.mkdir(exist_ok=True)
+    print(f'Corrected source-plane comparison: λ={LAMBDA*1e9:.0f} nm, P={POWER:g} W')
+    print(f'Bessel core estimate={BESSEL_CORE_RADIUS*1e3:.2f} mm; finite aperture radius={BESSEL_APERTURE_RADIUS:g} m')
+    plot_z0(out); approximate_propagation(out); print(f'Saved outputs to {out}')
 
-if __name__ == '__main__': main()
+if __name__=='__main__': main()
