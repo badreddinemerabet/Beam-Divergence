@@ -1,3 +1,5 @@
+> Corrected edition: read [CORRECTIONS.md](CORRECTIONS.md) for current model conventions, limitations, and validation changes.
+
 # Other beam types: unified comparison
 
 This extension follows the requested order:
@@ -54,3 +56,4 @@ The top-hat result uses a near-field circular aperture profile blended into a Fr
 LG01 and HG10 are higher-order Gaussian modes. Both have a central intensity null and therefore zero on-axis irradiance; their useful beam magnitude is the transverse ring or two-lobe structure rather than the axis value.
 
 For future work, the next accuracy upgrade should be a common FFT-based angular-spectrum propagator with explicit source-plane fields, finite apertures, lenses, atmospheric phase screens, and detector apertures.
+

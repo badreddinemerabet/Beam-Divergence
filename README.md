@@ -1,3 +1,5 @@
+> Corrected edition: read [CORRECTIONS.md](CORRECTIONS.md) for current model conventions, limitations, and validation changes.
+
 # Gaussian beam divergence simulation: near-IR and mid-IR
 
 This project compares free-space Gaussian beams over a propagation range of 0–100 km. It contains equivalent Python and MATLAB implementations.
@@ -75,3 +77,4 @@ Edit the parameter block near the top of `gaussian_beam_sim.m`.
 - Total power remains constant during ideal propagation; peak irradiance decreases as the beam expands approximately as `1/w(z)²`.
 - The electric and magnetic fields are inferred from the local irradiance using plane-wave relations. Near a focus, at an aperture, or for strongly nonparaxial beams, a full vector diffraction model is more appropriate.
 - For an engineering link budget, the received power also requires an aperture model. The present files provide the incident irradiance and beam size needed for that extension.
+

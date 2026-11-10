@@ -40,7 +40,7 @@ def main():
         for j,(lam,name,color) in enumerate(WAVELENGTHS):
             I=irradiance(Y,Z,lam,waist)
             ax=axes[i,j]
-            im=ax.pcolormesh(Z/1000,Y,np.maximum(I,1e-12),shading='auto',cmap='magma',norm=LogNorm(vmin=1e-8,vmax=max(1.0,float(I.max()))))
+            im=ax.pcolormesh(Z/1000,Y,np.maximum(I,1e-12),shading='auto',cmap='turbo',norm=LogNorm(vmin=1e-8,vmax=max(1.0,float(I.max()))))
             ax.set_title(f'{name}\n$w_0$ = {wlabel}')
             ax.set_xlabel('z (km)'); ax.set_ylabel('transverse y (m)'); ax.grid(alpha=.15)
             fig.colorbar(im,ax=ax,label='I (W/m², log)')
@@ -56,3 +56,4 @@ def main():
     print(f'Saved {out/"gaussian_propagation_waists_3mm_50mm.png"}')
 
 if __name__=='__main__': main()
+

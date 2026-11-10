@@ -1,6 +1,7 @@
 %% bessel_gaussian_sim.m
 % Finite-power Bessel-Gaussian beam over 0-100 km.
 clear; close all; clc;
+set(groot,'defaultFigureColormap',turbo(256));
 lambda=1064e-9; k=2*pi/lambda; P=1; coneAngle=0.05e-3; kr=k*sin(coneAngle);
 envelopeW0=0.20; zMax=100e3; zrEnv=pi*envelopeW0^2/lambda; coreRadius=2.405/kr;
 z=linspace(0,zMax,1001); wEnv=envelopeW0*sqrt(1+(z/zrEnv).^2);
@@ -24,3 +25,4 @@ for pass=1:2
     axisv=linspace(-extent,extent,600); [X,Y]=meshgrid(axisv,axisv); ww=envelopeW0*sqrt(1+(zz/zrEnv)^2); AA=autoNorm(ww); R=sqrt(X.^2+Y.^2); FF=AA*besselj(0,kr*R).^2.*exp(-2*R.^2/ww^2);
     figure('Color','w'); imagesc(axisv,axisv,log10(max(FF,1e-10))); axis xy equal tight; colorbar; xlabel('x (m)'); ylabel('y (m)'); title(sprintf('Bessel-Gaussian transverse irradiance at z=%g km',zz/1000)); saveas(gcf,fullfile(outdir,['bessel_gaussian_transverse_' tag '_matlab.png']));
 end
+

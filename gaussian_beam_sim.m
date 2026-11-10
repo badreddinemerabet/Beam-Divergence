@@ -3,6 +3,7 @@
 % Baseline: 1064 nm, 1550 nm, 3.5 um, 10.6 um; w0 = 10 mm; P = 1 W; M2 = 1.
 % Edit the parameter block below for other studies.
 clear; close all; clc;
+set(groot,'defaultFigureColormap',turbo(256));
 
 %% Parameters
 names = {'Near-IR 1064 nm','Near-IR 1550 nm','Mid-IR 3.5 um','Mid-IR 10.6 um'};
@@ -99,10 +100,11 @@ tiledlayout(2,2,'Padding','compact','TileSpacing','compact');
 for k = 1:nB
     wmap = w0_m(k).*sqrt(1+(Z./zR_m(k)).^2);
     Imap = 2*P_W(k)./(pi*wmap.^2).*exp(-2*Y.^2./wmap.^2);
-    nexttile; imagesc(zmap/1000,y,Imap); axis xy; colorbar; colormap hot;
+    nexttile; imagesc(zmap/1000,y,Imap); axis xy; colorbar; colormap turbo;
     title(names{k}); xlabel('z (km)'); ylabel('transverse y (m)');
 end
 sgtitle('2-D irradiance cross-sections (absolute scale)');
 saveas(gcf, fullfile(outdir, 'beam_intensity_maps_matlab.png'));
 
 fprintf('\nMATLAB plots and tables saved to: %s\n', outdir);
+

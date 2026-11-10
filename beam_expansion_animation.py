@@ -1,3 +1,4 @@
+from beam_models import airy_intensity, top_hat, bessel_gaussian
 """Animate transverse irradiance profiles as the beams propagate to 100 km."""
 from pathlib import Path
 import numpy as np
@@ -9,7 +10,7 @@ from scipy.special import j0, j1, airy
 LAMBDA=1064e-9; K=2*np.pi/LAMBDA; P=1.0; W0=10e-3; ZR=np.pi*W0**2/LAMBDA
 BESSEL_THETA=0.05e-3; BESSEL_KR=K*np.sin(BESSEL_THETA); BESSEL_CORE=2.405/BESSEL_KR; BESSEL_ZMAX=0.20/np.tan(BESSEL_THETA)
 AIRY_X0=0.05; AIRY_A=0.08; AIRY_Z0=K*AIRY_X0**2; TOPHAT_R=W0
-NAMES=['Bessel J0','Airy','Top-hat aperture','Laguerre-Gaussian LG01','Hermite-Gaussian HG10']
+NAMES=['Bessel-Gaussian diagnostic','Airy','Top-hat aperture','Laguerre-Gaussian LG01','Hermite-Gaussian HG10']
 COLORS=['#2563eb','#ea580c','#16a34a','#9333ea','#0891b2']
 
 
@@ -20,20 +21,19 @@ def airy_field(x,z):
 
 def profiles(x,z):
     w=W0*np.sqrt(1+(z/ZR)**2); rho=np.abs(x)
-    b=2*P/(np.pi*BESSEL_CORE**2)*j0(BESSEL_KR*rho)**2
-    if z>BESSEL_ZMAX: b*=np.exp(-((z-BESSEL_ZMAX)/BESSEL_ZMAX)**2)
-    a=P/(np.sqrt(2*np.pi)*AIRY_X0)*np.abs(airy_field(x,z))**2
-    ztr=K*TOPHAT_R**2/2; q=K*TOPHAT_R*rho/max(z,1e-12); disk=np.ones_like(q); mask=q>1e-12; disk[mask]=(2*j1(q[mask])/q[mask])**2
-    near=P/(np.pi*TOPHAT_R**2)*(rho<=TOPHAT_R); far=P/(np.pi*TOPHAT_R**2)*(ztr/max(z,1e-12))**2*disk; t=(1-np.clip(z/ztr,0,1))*near+np.clip(z/ztr,0,1)*far
-    rho2=2*x**2/w**2; lg=4*P/(np.pi*w**2)*rho2*np.exp(-rho2); u=np.sqrt(2)*x/w; hg=2*(2*P/(np.pi*w**2))*u**2*np.exp(-u**2)
+    b=bessel_gaussian(rho,z,LAMBDA,BESSEL_THETA,0.20,P)
+    a=airy_intensity(x,0,z,LAMBDA,AIRY_X0,AIRY_A,P)
+    t=top_hat(rho,z,LAMBDA,TOPHAT_R,P)
+    rho2=2*x**2/w**2; lg=2*P/(np.pi*w**2)*rho2*np.exp(-rho2)
+    u=np.sqrt(2)*x/w; hg=2*(2*P/(np.pi*w**2))*u**2*np.exp(-2*x**2/w**2)
     return [b,a,t,lg,hg]
 
 
 def beam_scales(z):
     # Visual characteristic half-widths, not a new physical definition of beam radius.
     w=W0*np.sqrt(1+(z/ZR)**2)
-    return np.array([max(BESSEL_CORE,0.2 if z>BESSEL_ZMAX else BESSEL_CORE),
-                     max(AIRY_X0, abs(z/AIRY_Z0)**2*AIRY_X0),
+    return np.array([0.20*np.sqrt(1+(z/(np.pi*0.20**2/LAMBDA))**2),
+                     np.sqrt(AIRY_X0**2+(LAMBDA*z/(np.pi*AIRY_X0))**2),
                      max(TOPHAT_R, 1.22*LAMBDA*max(z,1e-9)/(2*TOPHAT_R)),
                      w, w])
 
@@ -71,3 +71,4 @@ def main():
     print(f'Wrote {outdir}/beam_expansion_animation.gif')
 
 if __name__=='__main__': main()
+

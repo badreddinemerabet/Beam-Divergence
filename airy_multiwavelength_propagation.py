@@ -1,5 +1,6 @@
 """2-D finite-energy Airy-beam propagation maps for multiple wavelengths."""
 from pathlib import Path
+from beam_models import airy_norm, positive
 import csv
 import argparse
 import numpy as np
@@ -18,13 +19,12 @@ def field_1d(x,z,lam):
     return Ai*np.exp(APOD*s-APOD*xi**2/2+1j*(s*xi/2-xi**3/12+APOD**2*xi/2))
 
 def source_normalization(lam):
-    x=np.linspace(-12*X0,12*X0,2400); X,Y=np.meshgrid(x,x); F=field_1d(X,0,lam)*field_1d(Y,0,lam)
-    p=np.trapezoid(np.trapezoid(np.abs(F)**2,x,axis=1),x,axis=0)
-    return np.sqrt(POWER/p)
+    return airy_norm(X0, APOD, POWER)
 
 def main():
     global X0
     parser=argparse.ArgumentParser(); parser.add_argument('--scale-mm',type=float,default=50.0); args=parser.parse_args(); X0=args.scale_mm*1e-3
+    positive(scale_mm=args.scale_mm)
     tag=f'{args.scale_mm:g}mm'.replace('.','p'); out=Path(__file__).resolve().parent/'outputs_other_beams'; out.mkdir(exist_ok=True)
     fig,axes=plt.subplots(2,2,figsize=(17,11),constrained_layout=True)
     with (out/f'airy_multiwavelength_summary_{tag}.csv').open('w',newline='') as f:
@@ -33,8 +33,8 @@ def main():
             k=2*np.pi/lam; z0=k*X0**2; xi_end=ZMAX/z0; shift=X0*xi_end**2/4
             # Track the accelerating lobe in a lab-coordinate window; 2 m margin for structure.
             xlim=max(0.25,abs(shift)+0.25); x=np.linspace(-xlim,xlim,900); z=np.linspace(0,ZMAX,700); Z,X=np.meshgrid(z,x)
-            norm=source_normalization(lam); F=norm*field_1d(X,Z,lam)*field_1d(0,Z,lam); I=np.abs(F)**2
-            im=ax.pcolormesh(Z/1000,X,np.maximum(I,1e-30),shading='auto',cmap='coolwarm',norm=LogNorm(vmin=max(1e-20,float(I.max())*1e-10),vmax=max(1e-20,float(I.max()))))
+            norm=source_normalization(lam); F=norm*field_1d(X,Z,lam)*field_1d(0,z[None,:],lam); I=np.abs(F)**2
+            im=ax.pcolormesh(Z/1000,X,np.maximum(I,1e-30),shading='auto',cmap='turbo',norm=LogNorm(vmin=max(1e-20,float(I.max())*1e-10),vmax=max(1e-20,float(I.max()))))
             ax.set_title(f'Airy beam, λ = {label}, scale = {args.scale_mm:g} mm'); ax.set_xlabel('z (km)'); ax.set_ylabel('transverse x (m)'); ax.grid(alpha=.15); fig.colorbar(im,ax=ax,label='I (W/m², log)')
             wr.writerow([lam*1e9,X0*1e3,APOD,z0,shift,norm])
     fig.suptitle('2-D finite-energy Airy-beam irradiance propagation',fontsize=16)
@@ -45,10 +45,13 @@ def main():
         norm=source_normalization(lam); z0=2*np.pi/lam*X0**2; shift=X0*(ZMAX/z0)**2/4
         for i,(zv,title) in enumerate([(0,'z = 0'),(ZMAX,'z = 100 km')]):
             center=X0*(zv/z0)**2/4; extent=max(6*X0,0.25) if zv==0 else max(0.25,6*X0)
-            a=np.linspace(center-extent,center+extent,600); X2,Y2=np.meshgrid(a,a); F=norm*field_1d(X2,zv,lam)*field_1d(Y2,zv,lam); I=np.abs(F)**2; ax=axes[i,j]
-            im=ax.pcolormesh(a,a,np.maximum(I,1e-30),shading='auto',cmap='coolwarm',norm=LogNorm(vmin=max(1e-20,float(I.max())*1e-10),vmax=max(1e-20,float(I.max())))); ax.set_title(f'{label}, {title}'); ax.set_xlabel('x (m)'); ax.set_ylabel('y (m)'); ax.set_aspect('equal'); fig.colorbar(im,ax=ax,label='I (W/m², log)')
+            a=np.linspace(center-extent,center+extent,600)
+            fx=field_1d(a,zv,lam)
+            F=norm*fx[:,None]*fx[None,:]; I=np.abs(F)**2; ax=axes[i,j]
+            im=ax.pcolormesh(a,a,np.maximum(I,1e-30),shading='auto',cmap='turbo',norm=LogNorm(vmin=max(1e-20,float(I.max())*1e-10),vmax=max(1e-20,float(I.max())))); ax.set_title(f'{label}, {title}'); ax.set_xlabel('x (m)'); ax.set_ylabel('y (m)'); ax.set_aspect('equal'); fig.colorbar(im,ax=ax,label='I (W/m², log)')
     fig.suptitle('Airy transverse irradiance at source and 100 km',fontsize=16)
     fig.savefig(out/f'airy_transverse_multiwavelength_z0_z100km_{tag}.png',dpi=180); plt.close(fig)
     print('Saved multi-wavelength Airy maps')
 
 if __name__=='__main__': main()
+

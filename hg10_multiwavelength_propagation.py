@@ -1,5 +1,6 @@
 """HG10 2-D propagation maps for multiple wavelengths."""
 from pathlib import Path
+from beam_models import positive
 import csv
 import argparse
 import numpy as np
@@ -21,6 +22,7 @@ def intensity(x,y,z,lam):
 def main():
     global W0
     parser=argparse.ArgumentParser(); parser.add_argument('--waist-mm',type=float,default=50.0); args=parser.parse_args(); W0=args.waist_mm*1e-3
+    positive(waist_mm=args.waist_mm)
     tag=f'{args.waist_mm:g}mm'.replace('.','p'); out=Path(__file__).resolve().parent/'outputs_other_beams'; out.mkdir(exist_ok=True)
     z=np.linspace(0,ZMAX,700); x=np.linspace(-12,12,800); Z,X=np.meshgrid(z,x)
     fig,axes=plt.subplots(2,2,figsize=(16,10),constrained_layout=True,sharex=True,sharey=True)
@@ -28,7 +30,7 @@ def main():
         wr=csv.writer(f); wr.writerow(['wavelength_nm','waist_z0_mm','rayleigh_range_m','waist_at_100km_m','half_angle_rad'])
         for ax,(lam,label) in zip(axes.flat,WAVELENGTHS):
             I=intensity(X,0,Z,lam)
-            im=ax.pcolormesh(Z/1000,X,np.maximum(I,1e-12),shading='auto',cmap='coolwarm',norm=LogNorm(vmin=1e-8,vmax=max(1,float(I.max()))))
+            im=ax.pcolormesh(Z/1000,X,np.maximum(I,1e-12),shading='auto',cmap='turbo',norm=LogNorm(vmin=1e-8,vmax=max(1,float(I.max()))))
             ax.set_title(f'HG10, λ = {label}, w₀ = {args.waist_mm:g} mm'); ax.set_xlabel('z (km)'); ax.set_ylabel('transverse x (m)'); ax.grid(alpha=.15); fig.colorbar(im,ax=ax,label='I (W/m², log)')
             zr=np.pi*W0**2/(M2*lam); w100=float(waist(ZMAX,lam)); th=M2*lam/(np.pi*W0)
             wr.writerow([lam*1e9,W0*1e3,zr,w100,th])
@@ -38,9 +40,10 @@ def main():
     for j,(lam,label) in enumerate(WAVELENGTHS):
         for i,(zv,extent,title) in enumerate([(0,max(0.06,6*W0),'z = 0'),(ZMAX,12,'z = 100 km')]):
             a=np.linspace(-extent,extent,600); X2,Y2=np.meshgrid(a,a); I=intensity(X2,Y2,zv,lam); ax=axes[i,j]
-            im=ax.pcolormesh(a,a,np.maximum(I,1e-12),shading='auto',cmap='coolwarm',norm=LogNorm(vmin=1e-8,vmax=max(1,float(I.max())))); ax.set_title(f'{label}, {title}'); ax.set_xlabel('x (m)'); ax.set_ylabel('y (m)'); ax.set_aspect('equal'); fig.colorbar(im,ax=ax,label='I (W/m², log)')
+            im=ax.pcolormesh(a,a,np.maximum(I,1e-12),shading='auto',cmap='turbo',norm=LogNorm(vmin=1e-8,vmax=max(1,float(I.max())))); ax.set_title(f'{label}, {title}'); ax.set_xlabel('x (m)'); ax.set_ylabel('y (m)'); ax.set_aspect('equal'); fig.colorbar(im,ax=ax,label='I (W/m², log)')
     fig.suptitle('HG10 transverse irradiance: source and 100 km',fontsize=16)
     fig.savefig(out/f'hg10_transverse_multiwavelength_z0_z100km_{tag}.png',dpi=180); plt.close(fig)
     print('Saved multi-wavelength HG10 maps')
 
 if __name__=='__main__': main()
+

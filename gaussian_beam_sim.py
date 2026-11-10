@@ -154,7 +154,7 @@ def create_plots(beams, output_dir):
         intensity = b.irradiance(Y, Z)
         # Log scale keeps both the narrow waist and the weak 100 km tail visible.
         img = a.pcolormesh(Z / 1000, Y, np.maximum(intensity, 1e-12), shading="auto",
-                           cmap="magma", norm=LogNorm(vmin=1e-8, vmax=max(1.0, intensity.max())))
+                           cmap="turbo", norm=LogNorm(vmin=1e-8, vmax=max(1.0, intensity.max())))
         a.set_title(b.name)
         a.set_xlabel("z (km)")
         a.set_ylabel("transverse y (m)")
@@ -177,3 +177,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

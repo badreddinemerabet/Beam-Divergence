@@ -12,7 +12,7 @@ import csv
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from scipy.special import j0
+from scipy.special import j0, i0e
 
 LAMBDA=1064e-9; K=2*np.pi/LAMBDA; POWER=1.0
 CONE_ANGLE=0.05e-3; KR=K*np.sin(CONE_ANGLE)
@@ -29,13 +29,7 @@ def envelope_radius(z):
 
 def normalization(z):
     w=envelope_radius(z)
-    # Integral of J0^2 exp(-2r^2/w^2) over the radial plane.
-    rmax=8*np.max(np.atleast_1d(w))
-    r=np.linspace(0,rmax,25000)
-    # For scalar z this is inexpensive and stable.
-    shape=j0(KR*r)**2*np.exp(-2*r**2/w**2)
-    integral=2*np.pi*np.trapezoid(shape*r,r)
-    return POWER/integral
+    return POWER/(np.pi*w**2/2*i0e(KR**2*w**2/4))
 
 
 def irradiance(r,z):
@@ -63,13 +57,14 @@ def main():
     zmap=np.linspace(0,ZMAX,600); y=np.linspace(-0.6,0.6,500); Z,Y=np.meshgrid(zmap,y)
     W=envelope_radius(Z); A=np.array([normalization(zi) for zi in zmap]); field=A[None,:]*j0(KR*np.abs(Y))**2*np.exp(-2*Y**2/W**2)
     fig,ax=plt.subplots(figsize=(12,6),constrained_layout=True)
-    im=ax.pcolormesh(Z/1000,Y,np.maximum(field,1e-12),shading='auto',cmap='magma',norm=LogNorm(vmin=1e-10,vmax=max(1,float(field.max())))); fig.colorbar(im,ax=ax,label='Irradiance (W/m², log scale)')
+    im=ax.pcolormesh(Z/1000,Y,np.maximum(field,1e-12),shading='auto',cmap='turbo',norm=LogNorm(vmin=1e-10,vmax=max(1,float(field.max())))); fig.colorbar(im,ax=ax,label='Irradiance (W/m², log scale)')
     ax.set(title='Bessel–Gaussian propagation cross-section',xlabel='z (km)',ylabel='transverse y (m)'); fig.savefig(out/'bessel_gaussian_propagation_map.png',dpi=180); plt.close(fig)
 
     # Transverse maps at source and 100 km
     for zi,tag,extent in [(0,'z0',0.25),(ZMAX,'z100km',0.6)]:
         axis=np.linspace(-extent,extent,600); X,Y=np.meshgrid(axis,axis); F=irradiance(np.sqrt(X**2+Y**2),zi)
-        fig,ax=plt.subplots(figsize=(7,6),constrained_layout=True); im=ax.pcolormesh(axis,axis,np.maximum(F,1e-12),shading='auto',cmap='magma',norm=LogNorm(vmin=1e-10,vmax=max(1,float(F.max())))); fig.colorbar(im,ax=ax,label='Irradiance (W/m², log scale)'); ax.set_aspect('equal'); ax.set(title=f'Bessel–Gaussian transverse irradiance at z={zi/1000:g} km',xlabel='x (m)',ylabel='y (m)'); fig.savefig(out/f'bessel_gaussian_transverse_{tag}.png',dpi=180); plt.close(fig)
+        fig,ax=plt.subplots(figsize=(7,6),constrained_layout=True); im=ax.pcolormesh(axis,axis,np.maximum(F,1e-12),shading='auto',cmap='turbo',norm=LogNorm(vmin=1e-10,vmax=max(1,float(F.max())))); fig.colorbar(im,ax=ax,label='Irradiance (W/m², log scale)'); ax.set_aspect('equal'); ax.set(title=f'Bessel–Gaussian transverse irradiance at z={zi/1000:g} km',xlabel='x (m)',ylabel='y (m)'); fig.savefig(out/f'bessel_gaussian_transverse_{tag}.png',dpi=180); plt.close(fig)
     print(f'Saved results to {out}')
 
 if __name__=='__main__': main()
+

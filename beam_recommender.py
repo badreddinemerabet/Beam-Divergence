@@ -1,4 +1,4 @@
-"""Physics-generated neural-network recommender for minimum beam divergence.
+"""Surrogate recommender for heuristic characteristic-width scores.
 
 The model learns a regression mapping from beam/propagation parameters to an
 estimated effective half-divergence. At inference it evaluates every candidate
@@ -7,6 +7,7 @@ beam and returns the lowest-divergence recommendation.
 This is a ranking aid, not a replacement for a full diffraction solver.
 """
 from pathlib import Path
+from beam_models import positive
 import csv
 import pickle
 import numpy as np
@@ -19,9 +20,13 @@ BEAM_INDEX={b:i for i,b in enumerate(BEAMS)}
 
 def physics_divergence(beam, wavelength_m, waist_m, m2, z_m, receiver_aperture_m, bessel_cone_rad, bessel_aperture_m, airy_scale_m):
     """Effective half-divergence in rad, defined as characteristic width / z."""
-    z=max(float(z_m),1e-6); lam=wavelength_m; k=2*np.pi/lam
+    positive(wavelength=wavelength_m, waist=waist_m, m2=m2, distance=z_m,
+             receiver=receiver_aperture_m, cone=bessel_cone_rad,
+             bessel_aperture=bessel_aperture_m, airy_scale=airy_scale_m)
+    if m2<1: raise ValueError('M2 must be at least 1')
+    z=float(z_m); lam=wavelength_m; k=2*np.pi/lam
     if beam in ('Gaussian','LG01','HG10'):
-        mode_factor={'Gaussian':1.0,'LG01':2.0,'HG10':2.0}[beam]
+        mode_factor=1.0  # Same Gaussian envelope parameter as the plotting scripts.
         zr=np.pi*waist_m**2/(m2*mode_factor*lam)
         width=waist_m*np.sqrt(1+(z/zr)**2)
         return width/z
@@ -48,10 +53,12 @@ def physics_divergence(beam, wavelength_m, waist_m, m2, z_m, receiver_aperture_m
 
 def make_features(beam, scenario):
     lam,w0,m2,z,ap,cone,bap,airy=scenario
+    positive(wavelength=lam,waist=w0,m2=m2,distance=z,aperture=ap,cone=cone,bessel_aperture=bap,airy_scale=airy)
+    if m2<1: raise ValueError("M2 must be at least 1")
     onehot=np.zeros(len(BEAMS)); onehot[BEAM_INDEX[beam]]=1
     # Log scales make the wide wavelength/distance ranges learnable.
     return np.r_[onehot, np.log10(lam*1e9), np.log10(w0*1e3), m2,
-                 np.log10(z/1000), np.log10(ap), np.log10(cone*1e3),
+                 np.log10(z/1000), np.log10(cone*1e3),
                  np.log10(bap), np.log10(airy*1e3)]
 
 
@@ -90,6 +97,15 @@ class MLP:
             if epoch%150==0: print(f'epoch {epoch:4d}  log-divergence MSE={loss:.6f}')
 
 
+def grouped_split(scenarios,rng):
+    keys=[tuple(s) for s in scenarios]
+    unique=list(dict.fromkeys(keys))
+    if len(unique)<2: raise ValueError('Need at least two independent scenarios')
+    idx=rng.permutation(len(unique)); cut=max(1,min(len(unique)-1,int(.8*len(unique))))
+    train={unique[i] for i in idx[:cut]}
+    return (np.array([i for i,k in enumerate(keys) if k in train]),
+            np.array([i for i,k in enumerate(keys) if k not in train]))
+
 def train_and_evaluate(outdir):
     rng=np.random.default_rng(SEED); scenarios=random_scenarios(3500,rng)
     X=[]; y=[]; labels=[]
@@ -97,17 +113,17 @@ def train_and_evaluate(outdir):
         for beam in BEAMS:
             X.append(make_features(beam,s)); y.append(np.log10(physics_divergence(beam,*s)+1e-30)); labels.append(beam)
     X=np.asarray(X); y=np.asarray(y)
-    idx=rng.permutation(len(X)); split=int(0.8*len(X)); tr,te=idx[:split],idx[split:]
+    tr,te=grouped_split([s for s in scenarios for _ in BEAMS],rng)
     mu=X[tr].mean(0); sig=X[tr].std(0)+1e-12; Xn=(X-mu)/sig
     ymu=float(y[tr].mean()); ysig=float(y[tr].std()+1e-12)
     model=MLP(X.shape[1]); model.fit(Xn[tr],(y[tr]-ymu)/ysig,epochs=1400,lr=0.003); pred=model.predict(Xn[te])*ysig+ymu
     rmse=np.sqrt(np.mean((pred-y[te])**2)); print(f'test RMSE in log10(rad): {rmse:.4f}')
-    # Ranking accuracy on held-out complete scenarios, not randomly shuffled rows.
+    # Independent scenarios for ranking evaluation.
     correct=0; total=0; test_scenarios=random_scenarios(500,rng)
     for s in test_scenarios:
         rows=np.asarray([make_features(b,s) for b in BEAMS]); actual=np.asarray([np.log10(physics_divergence(b,*s)+1e-30) for b in BEAMS])
         p=model.predict((rows-mu)/sig)*ysig+ymu
-        if np.argmin(p)==np.argmin(actual): correct+=1
+        if np.isclose(actual[np.argmin(p)],actual.min(),rtol=0,atol=1e-9): correct+=1
         total+=1
     print(f'beam-selection accuracy on grouped test rows: {correct/max(total,1):.3f}')
     with open(outdir/'beam_recommender_model.pkl','wb') as f: pickle.dump({'model':model,'mu':mu,'sig':sig,'ymu':ymu,'ysig':ysig,'beams':BEAMS},f)
@@ -130,9 +146,10 @@ def main():
     scenario=(1064e-9,10e-3,1.0,100e3,0.20,0.05e-3,0.20,0.05)
     ranked=recommend(model,mu,sig,ymu,ysig,scenario)
     print('\nExample recommendation: 1064 nm, w0=10 mm, M2=1, z=100 km')
-    for rank,(name,phys,ml) in enumerate(ranked,1): print(f'{rank}. {name:18s} physics={phys:.4e} rad, ML={ml:.4e} rad')
+    for rank,(name,phys,ml) in enumerate(ranked,1): print(f'{rank}. {name:18s} heuristic={phys:.4e} rad, ML={ml:.4e} rad')
     with open(outdir/'example_recommendation.csv','w',newline='') as f:
         w=csv.writer(f); w.writerow(['rank','beam','physics_effective_half_divergence_rad','mlp_predicted_half_divergence_rad']);
         for rank,(name,phys,ml) in enumerate(ranked,1): w.writerow([rank,name,phys,ml])
 
 if __name__=='__main__': main()
+
